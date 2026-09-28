@@ -137,6 +137,7 @@ function App() {
   const startChangingAnswer = () => {
     setChangingAnswer(true)
     setSelectedAnswer(null)
+    setShowAI(false)
   }
 
   const finishChangedAnswer = (newAnswer) => {
