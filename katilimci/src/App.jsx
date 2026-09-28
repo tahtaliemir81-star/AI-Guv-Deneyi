@@ -49,6 +49,39 @@ const questions = [
   },
 ]
 
+
+const API_URL = 'https://ai-guv-deneyi.onrender.com'
+
+const getParticipantNumber = async () => {
+  const response = await fetch(`${API_URL}/api/participant-number`)
+
+  if (!response.ok) {
+    throw new Error('Katılımcı numarası alınamadı.')
+  }
+
+  const data = await response.json()
+  return data.participantNumber
+}
+
+const saveResults = async (participantNumber, results) => {
+  const response = await fetch(`${API_URL}/api/results`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      participantNumber,
+      results,
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error('Sonuçlar sunucuya gönderilemedi.')
+  }
+
+  return response.json()
+}
+
 function App() {
   const [started, setStarted] = useState(false)
   const [participantNumber, setParticipantNumber] = useState(null)
@@ -90,28 +123,24 @@ function App() {
     selectedAnswer,
   ])
 
-  const startExperiment = () => {
-    const lastNumber = Number(
-      localStorage.getItem('ai-deneyi-last-number') || '0'
-    )
+  const startExperiment = async () => {
+    try {
+      const newNumber = await getParticipantNumber()
 
-    const newNumber = lastNumber + 1
-
-    localStorage.setItem(
-      'ai-deneyi-last-number',
-      String(newNumber)
-    )
-
-    setParticipantNumber(newNumber)
-    setStarted(true)
-    setQuestionIndex(0)
-    setTimeLeft(15)
-    setSelectedAnswer(null)
-    setInitialAnswer(null)
-    setShowAI(false)
-    setChangingAnswer(false)
-    setResults([])
-    setFinished(false)
+      setParticipantNumber(newNumber)
+      setStarted(true)
+      setQuestionIndex(0)
+      setTimeLeft(15)
+      setSelectedAnswer(null)
+      setInitialAnswer(null)
+      setShowAI(false)
+      setChangingAnswer(false)
+      setResults([])
+      setFinished(false)
+    } catch (error) {
+      console.error(error)
+      alert('Sunucuya bağlanılamadı. Lütfen tekrar deneyin.')
+    }
   }
 
   const chooseAnswer = (index) => {
@@ -160,10 +189,13 @@ function App() {
     setResults(updatedResults)
 
     if (questionIndex === questions.length - 1) {
-      localStorage.setItem(
-        `ai-deneyi-result-${participantNumber}`,
-        JSON.stringify(updatedResults)
-      )
+      try {
+        await saveResults(participantNumber, updatedResults)
+      } catch (error) {
+        console.error(error)
+        alert('Sonuçlar sunucuya gönderilemedi.')
+        return
+      }
 
       setFinished(true)
       return
@@ -197,10 +229,13 @@ function App() {
     setResults(updatedResults)
 
     if (questionIndex === questions.length - 1) {
-      localStorage.setItem(
-        `ai-deneyi-result-${participantNumber}`,
-        JSON.stringify(updatedResults)
-      )
+      try {
+        await saveResults(participantNumber, updatedResults)
+      } catch (error) {
+        console.error(error)
+        alert('Sonuçlar sunucuya gönderilemedi.')
+        return
+      }
 
       setFinished(true)
       return
