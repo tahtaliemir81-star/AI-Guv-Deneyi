@@ -138,7 +138,7 @@ app.post('/api/reset-data', (req, res) => {
     days: [],
     participants: [],
   }
-  saveData()
+  saveData(data)
   res.json({ok: true, message: 'Tüm test verileri ve gün kayıtları silindi.'})
 })
 
