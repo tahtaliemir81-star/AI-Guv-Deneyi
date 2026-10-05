@@ -130,6 +130,18 @@ app.get("/api/status", (req, res) => {
   });
 });
 
+app.post('/api/reset-data', (req, res) => {
+  data = {
+    nextParticipantNumber: 1,
+    activeDay: null,
+    nextDayNumber: 1,
+    days: [],
+    participants: [],
+  }
+  saveData()
+  res.json({ok: true, message: 'Tüm test verileri ve gün kayıtları silindi.'})
+})
+
 app.listen(PORT, () => {
   console.log(`✅ AI Güven Deneyi sunucusu: http://localhost:${PORT}`);
 });
