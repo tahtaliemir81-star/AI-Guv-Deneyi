@@ -15,6 +15,7 @@ function loadData() {
     return {
       nextParticipantNumber: 1,
       activeDay: null,
+      nextDayNumber: 1,
       days: [],
       participants: []
     };
@@ -48,6 +49,7 @@ app.post("/api/results", (req, res) => {
 
   const participant = {
     ...req.body,
+    day: data.activeDay,
     receivedAt: new Date().toISOString()
   };
 
@@ -55,6 +57,62 @@ app.post("/api/results", (req, res) => {
   saveData(data);
 
   res.json({ success: true });
+});
+
+app.post("/api/day/start", (req, res) => {
+  const data = loadData();
+
+  if (data.activeDay !== null) {
+    return res.status(409).json({
+      error: "Zaten aktif bir gün var."
+    });
+  }
+
+  const day = data.nextDayNumber || 1;
+
+  data.activeDay = day;
+  data.nextDayNumber = day + 1;
+
+  data.days.push({
+    day,
+    startedAt: new Date().toISOString(),
+    endedAt: null
+  });
+
+  saveData(data);
+
+  res.json({
+    success: true,
+    activeDay: day
+  });
+});
+
+app.post("/api/day/end", (req, res) => {
+  const data = loadData();
+
+  if (data.activeDay === null) {
+    return res.status(409).json({
+      error: "Aktif gün yok."
+    });
+  }
+
+  const currentDay = data.days.find(
+    (item) => item.day === data.activeDay
+  );
+
+  if (currentDay) {
+    currentDay.endedAt = new Date().toISOString();
+  }
+
+  const endedDay = data.activeDay;
+  data.activeDay = null;
+
+  saveData(data);
+
+  res.json({
+    success: true,
+    endedDay
+  });
 });
 
 app.get("/api/results", (req, res) => {
@@ -67,7 +125,8 @@ app.get("/api/status", (req, res) => {
 
   res.json({
     activeDay: data.activeDay,
-    participantCount: data.participants.length
+    participantCount: data.participants.length,
+    days: data.days
   });
 });
 
