@@ -115,6 +115,30 @@ app.post("/api/day/end", (req, res) => {
   });
 });
 
+app.delete("/api/results/:receivedAt", (req, res) => {
+  const data = loadData()
+  const receivedAt = decodeURIComponent(req.params.receivedAt)
+
+  const index = data.participants.findIndex(
+    (participant) => participant.receivedAt === receivedAt
+  )
+
+  if (index === -1) {
+    return res.status(404).json({
+      success: false,
+      error: "Kayıt bulunamadı."
+    })
+  }
+
+  data.participants.splice(index, 1)
+  saveData(data)
+
+  res.json({
+    success: true,
+    message: "Kayıt silindi."
+  })
+})
+
 app.get("/api/results", (req, res) => {
   const data = loadData();
   res.json(data.participants);
