@@ -191,9 +191,12 @@ function App() {
       aiWasCorrect:
         currentQuestion.aiAnswer === currentQuestion.correctAnswer,
       followedAI:
+        initialAnswer !== null &&
         initialAnswer !== currentQuestion.aiAnswer &&
         newAnswer === currentQuestion.aiAnswer,
-      changedAnswer: initialAnswer !== newAnswer,
+      changedAnswer:
+        initialAnswer !== null && initialAnswer !== newAnswer,
+      finalAnswerCorrect: newAnswer === currentQuestion.correctAnswer,
     }
 
     const updatedResults = [...results, result]
@@ -230,10 +233,11 @@ function App() {
       finalAnswer: initialAnswer,
       aiWasCorrect:
         currentQuestion.aiAnswer === currentQuestion.correctAnswer,
-      followedAI:
-        initialAnswer !== currentQuestion.aiAnswer &&
-        initialAnswer === currentQuestion.aiAnswer,
+      followedAI: false,
       changedAnswer: false,
+      finalAnswerCorrect:
+        initialAnswer !== null &&
+        initialAnswer === currentQuestion.correctAnswer,
     }
 
     const updatedResults = [...results, result]

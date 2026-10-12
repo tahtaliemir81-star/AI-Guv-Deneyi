@@ -100,33 +100,71 @@ function App() {
     [participants],
   )
 
-  const followedAI = answers.filter((item) => item.followedAI === true).length
-  const changedAnswers = answers.filter(
-    (item) => item.changedAnswer === true,
-  ).length
-  const aiCorrect = answers.filter(
-    (item) => item.aiWasCorrect === true,
-  ).length
+  const validIndex = (value) =>
+    Number.isInteger(value) && value >= 0 && value <= 3
 
-  const confidenceTotal = answers.reduce(
-    (sum, item) => sum + (Number(item.aiConfidence) || 0),
-    0,
+  // İlk ve son cevabı geçerli olan sorular: cevap değişimi ölçümü.
+  const validDecisionAnswers = answers.filter(
+    (item) => validIndex(item.initialAnswer) && validIndex(item.finalAnswer),
   )
 
-  const averageConfidence = answers.length
-    ? Math.round(confidenceTotal / answers.length)
+  const changedAnswers = validDecisionAnswers.filter(
+    (item) => item.initialAnswer !== item.finalAnswer,
+  ).length
+
+  // AI cevabından farklı başlayan geçerli cevaplar: AI'a geçiş ölçümü.
+  const eligibleToFollow = validDecisionAnswers.filter(
+    (item) => validIndex(item.aiAnswer) &&
+      item.initialAnswer !== item.aiAnswer,
+  )
+
+  const followedAI = eligibleToFollow.filter(
+    (item) => item.finalAnswer === item.aiAnswer,
+  ).length
+
+  // AI doğruluğu, katılımcının kararından bağımsız ölçülür.
+  const validAIAnswers = answers.filter(
+    (item) => validIndex(item.aiAnswer) && validIndex(item.correctAnswer),
+  )
+
+  const aiCorrect = validAIAnswers.filter(
+    (item) => item.aiAnswer === item.correctAnswer,
+  ).length
+
+  // Katılımcının son cevabının doğruluğu ayrı ölçülür.
+  const validFinalAnswers = answers.filter(
+    (item) => validIndex(item.finalAnswer) && validIndex(item.correctAnswer),
+  )
+
+  const participantCorrect = validFinalAnswers.filter(
+    (item) => item.finalAnswer === item.correctAnswer,
+  ).length
+
+  const validConfidences = answers
+    .map((item) => Number(item.aiConfidence))
+    .filter((value) => Number.isFinite(value) && value >= 0 && value <= 100)
+
+  const averageConfidence = validConfidences.length
+    ? Math.round(
+        validConfidences.reduce((sum, value) => sum + value, 0) /
+        validConfidences.length,
+      )
     : 0
 
-  const followRate = answers.length
-    ? Math.round((followedAI / answers.length) * 100)
+  const followRate = eligibleToFollow.length
+    ? Math.round((followedAI / eligibleToFollow.length) * 100)
     : 0
 
-  const changeRate = answers.length
-    ? Math.round((changedAnswers / answers.length) * 100)
+  const changeRate = validDecisionAnswers.length
+    ? Math.round((changedAnswers / validDecisionAnswers.length) * 100)
     : 0
 
-  const aiAccuracy = answers.length
-    ? Math.round((aiCorrect / answers.length) * 100)
+  const aiAccuracy = validAIAnswers.length
+    ? Math.round((aiCorrect / validAIAnswers.length) * 100)
+    : 0
+
+  const participantAccuracy = validFinalAnswers.length
+    ? Math.round((participantCorrect / validFinalAnswers.length) * 100)
     : 0
 
   const time20Participants = participants.filter(
@@ -193,6 +231,11 @@ function App() {
           <span>AI doğruluk</span>
           <strong>%{aiAccuracy}</strong>
         </article>
+
+        <article>
+          <span>Katılımcı son cevap doğruluğu</span>
+          <strong>%{participantAccuracy}</strong>
+        </article>
       </section>
 
       <nav className="tabs" aria-label="Araştırma bölümleri">
@@ -222,8 +265,13 @@ function App() {
 
             <div className="calcs">
               <div>
-                <span>Toplam cevap</span>
+                <span>Toplam kayıtlı soru</span>
                 <strong>{answers.length}</strong>
+              </div>
+
+              <div>
+                <span>Geçerli ilk ve son cevap</span>
+                <strong>{validDecisionAnswers.length}</strong>
               </div>
 
               <div>
@@ -233,7 +281,7 @@ function App() {
 
               <div>
                 <span>AI yanlış cevap</span>
-                <strong>{answers.length - aiCorrect}</strong>
+                <strong>{validAIAnswers.length - aiCorrect}</strong>
               </div>
 
               <div>
@@ -278,9 +326,12 @@ function App() {
 
 
             <div className="research-note">
-              <strong>Ana ölçüm:</strong>{' '}
-              Katılımcının ilk cevabı AI cevabından farklı olup son cevabı AI
-              cevabıyla aynıysa bu cevap “AI'ı takip etti” olarak hesaplanır.
+              <strong>Ölçüm açıklaması:</strong>{' '}
+              Cevap değiştirme oranı geçerli ilk ve son cevaplar üzerinden
+              hesaplanır. AI'ı takip etme oranı yalnızca ilk cevabı AI
+              cevabından farklı olan geçerli cevaplar arasında hesaplanır.
+              AI doğruluğu ve katılımcının son cevap doğruluğu ayrı ölçülür.
+              Geçersiz veya eksik cevaplar ilgili ölçümün paydasına alınmaz.
             </div>
 
             <button
@@ -318,20 +369,37 @@ function App() {
                         ? participant.results
                         : []
 
-                      const participantFollowed =
+                      const participantFollowEligible =
                         participantAnswers.filter(
-                          (item) => item.followedAI === true,
+                          (item) =>
+                            validIndex(item.initialAnswer) &&
+                            validIndex(item.finalAnswer) &&
+                            validIndex(item.aiAnswer) &&
+                            item.initialAnswer !== item.aiAnswer,
+                        )
+
+                      const participantFollowed =
+                        participantFollowEligible.filter(
+                          (item) => item.finalAnswer === item.aiAnswer,
                         ).length
 
+                      const participantConfidenceValues =
+                        participantAnswers
+                          .map((item) => Number(item.aiConfidence))
+                          .filter(
+                            (value) =>
+                              Number.isFinite(value) &&
+                              value >= 0 &&
+                              value <= 100,
+                          )
+
                       const participantConfidence =
-                        participantAnswers.length
+                        participantConfidenceValues.length
                           ? Math.round(
-                              participantAnswers.reduce(
-                                (sum, item) =>
-                                  sum +
-                                  (Number(item.aiConfidence) || 0),
+                              participantConfidenceValues.reduce(
+                                (sum, value) => sum + value,
                                 0,
-                              ) / participantAnswers.length,
+                              ) / participantConfidenceValues.length,
                             )
                           : 0
 
