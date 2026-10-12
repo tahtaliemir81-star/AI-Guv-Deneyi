@@ -290,3 +290,55 @@ th {
     padding: 17px;
   }
 }
+
+.danger-button {
+  border: 1px solid #dc2626;
+  background: #dc2626;
+  color: #fff;
+}
+
+.danger-button:hover {
+  background: #b91c1c;
+}
+
+.record-menu-cell {
+  position: relative;
+  width: 44px;
+  text-align: center;
+}
+
+.record-menu-button {
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 8px;
+}
+
+.record-menu {
+  position: absolute;
+  right: 8px;
+  top: 38px;
+  z-index: 10;
+  min-width: 120px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.record-menu button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 9px 10px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 7px;
+}
+
+.record-menu button:hover {
+  background: #f2f2f2;
+}

@@ -63,7 +63,15 @@ const getParticipantNumber = async () => {
   return data.participantNumber
 }
 
-const saveResults = async (participantNumber, results) => {
+const wakeServer = async () => {
+  try {
+    await fetch(`${API_URL}/api/status`)
+  } catch {
+    // Sunucu uyanırken oluşabilecek bağlantı hatası görmezden gelinir.
+  }
+}
+
+const saveResults = async (participantNumber, results, timeLimit) => {
   const response = await fetch(`${API_URL}/api/results`, {
     method: 'POST',
     headers: {
@@ -72,6 +80,7 @@ const saveResults = async (participantNumber, results) => {
     body: JSON.stringify({
       participantNumber,
       results,
+      timeLimit,
     }),
   })
 
@@ -86,7 +95,8 @@ function App() {
   const [started, setStarted] = useState(false)
   const [participantNumber, setParticipantNumber] = useState(null)
   const [questionIndex, setQuestionIndex] = useState(0)
-  const [timeLeft, setTimeLeft] = useState(15)
+  const [timeLeft, setTimeLeft] = useState(20)
+  const [selectedTime, setSelectedTime] = useState(null)
   const [selectedAnswer, setSelectedAnswer] = useState(null)
   const [initialAnswer, setInitialAnswer] = useState(null)
   const [showAI, setShowAI] = useState(false)
@@ -123,23 +133,23 @@ function App() {
     selectedAnswer,
   ])
 
-  const startExperiment = async () => {
+  const chooseTimeAndStart = async (seconds) => {
+    setSelectedTime(seconds)
+    setStarted(true)
+    setQuestionIndex(0)
+    setTimeLeft(seconds)
+    setSelectedAnswer(null)
+    setInitialAnswer(null)
+    setShowAI(false)
+    setChangingAnswer(false)
+    setResults([])
+    setFinished(false)
+
     try {
       const newNumber = await getParticipantNumber()
-
       setParticipantNumber(newNumber)
-      setStarted(true)
-      setQuestionIndex(0)
-      setTimeLeft(15)
-      setSelectedAnswer(null)
-      setInitialAnswer(null)
-      setShowAI(false)
-      setChangingAnswer(false)
-      setResults([])
-      setFinished(false)
     } catch (error) {
       console.error(error)
-      alert('Sunucuya bağlanılamadı. Lütfen tekrar deneyin.')
     }
   }
 
@@ -149,6 +159,7 @@ function App() {
     setSelectedAnswer(index)
 
     if (changingAnswer) {
+      setChangingAnswer(false)
       finishChangedAnswer(index)
     }
   }
@@ -169,7 +180,7 @@ function App() {
     setShowAI(false)
   }
 
-  const finishChangedAnswer = (newAnswer) => {
+  const finishChangedAnswer = async (newAnswer) => {
     const result = {
       question: questionIndex + 1,
       initialAnswer,
@@ -190,7 +201,7 @@ function App() {
 
     if (questionIndex === questions.length - 1) {
       try {
-        await saveResults(participantNumber, updatedResults)
+        await saveResults(participantNumber, updatedResults, selectedTime)
       } catch (error) {
         console.error(error)
         alert('Sonuçlar sunucuya gönderilemedi.')
@@ -206,10 +217,10 @@ function App() {
     setInitialAnswer(null)
     setShowAI(false)
     setChangingAnswer(false)
-    setTimeLeft(15)
+    setTimeLeft(selectedTime)
   }
 
-  const keepAnswer = () => {
+  const keepAnswer = async () => {
     const result = {
       question: questionIndex + 1,
       initialAnswer,
@@ -230,7 +241,7 @@ function App() {
 
     if (questionIndex === questions.length - 1) {
       try {
-        await saveResults(participantNumber, updatedResults)
+        await saveResults(participantNumber, updatedResults, selectedTime)
       } catch (error) {
         console.error(error)
         alert('Sonuçlar sunucuya gönderilemedi.')
@@ -246,7 +257,7 @@ function App() {
     setInitialAnswer(null)
     setShowAI(false)
     setChangingAnswer(false)
-    setTimeLeft(15)
+    setTimeLeft(selectedTime)
   }
 
   if (finished) {
@@ -264,9 +275,10 @@ function App() {
           <button onClick={() => {
             setStarted(false)
             setFinished(false)
+            setSelectedTime(null)
             setParticipantNumber(null)
             setQuestionIndex(0)
-            setTimeLeft(15)
+            setTimeLeft(20)
             setSelectedAnswer(null)
             setInitialAnswer(null)
             setShowAI(false)
@@ -284,23 +296,41 @@ function App() {
     <main className="app">
       {!started ? (
         <section className="welcome">
+          <button
+            type="button"
+            className="wake-button"
+            onClick={wakeServer}
+            title="Sunucuyu hazırla"
+            aria-label="Sunucuyu hazırla"
+          >
+            ⚡
+          </button>
+
           <div className="logo">AI</div>
 
           <h1>AI Güven Deneyi</h1>
 
           <p>
-            Yapay zekânın verdiği güven düzeyinin,
-            insanların kararlarını nasıl etkilediğini araştırıyoruz.
+            Bu deneyde, yapay zekânın cevaplarının ve güven düzeyinin
+            insanların kararlarını nasıl etkileyebildiğini inceliyoruz.
           </p>
 
           <div className="info">
-            <span>⏱️ Soru başına 15 saniye</span>
+            <span>⏱️ Soru başına 20 veya 30 saniye</span>
             <span>🧠 5 soru</span>
           </div>
 
-          <button onClick={startExperiment}>
-            Deneye Başla
+          {selectedTime === null ? (
+        <div className="time-choice">
+          <p>Deney süresini seçin:</p>
+          <button type="button" onClick={() => chooseTimeAndStart(20)}>
+            20 saniye
           </button>
+          <button type="button" onClick={() => chooseTimeAndStart(30)}>
+            30 saniye
+          </button>
+        </div>
+      ) : null}
         </section>
       ) : (
         <section className="participant">

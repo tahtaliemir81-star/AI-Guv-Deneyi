@@ -1,171 +1,150 @@
 const express = require("express");
 const cors = require("cors");
-const fs = require("fs");
-const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_FILE = path.join(__dirname, "data.json");
 
 app.use(cors());
 app.use(express.json());
 
-function loadData() {
-  if (!fs.existsSync(DATA_FILE)) {
-    return {
-      nextParticipantNumber: 1,
-      activeDay: null,
-      nextDayNumber: 1,
-      days: [],
-      participants: []
-    };
+const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
+const DATABASE_ID = process.env.CLOUDFLARE_D1_DATABASE_ID;
+const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
+
+async function d1(sql, params = []) {
+  if (!ACCOUNT_ID || !DATABASE_ID || !API_TOKEN) {
+    throw new Error("Cloudflare D1 ortam değişkenleri eksik.");
   }
 
-  return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-}
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DATABASE_ID}/query`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ sql, params }),
+    }
+  );
 
-function saveData(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  const result = await response.json();
+
+  if (!response.ok || !result.success) {
+    console.error("D1 API hatası:", JSON.stringify(result.errors || result));
+    throw new Error("D1 sorgusu başarısız.");
+  }
+
+  return result.result?.[0];
 }
 
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
-    message: "AI Güven Deneyi sunucusu çalışıyor."
+    message: "AI Güven Deneyi sunucusu çalışıyor.",
   });
 });
 
-app.get("/api/participant-number", (req, res) => {
-  const data = loadData();
-  const number = data.nextParticipantNumber++;
-
-  saveData(data);
-
-  res.json({ participantNumber: number });
+app.get("/api/participant-number", async (req, res) => {
+  try {
+    const result = await d1(
+      "SELECT COALESCE(MAX(participant_number), 0) + 1 AS next_number FROM participants"
+    );
+    res.json({ participantNumber: result.results[0].next_number });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Katılımcı numarası alınamadı." });
+  }
 });
 
-app.post("/api/results", (req, res) => {
-  const data = loadData();
+app.post("/api/results", async (req, res) => {
+  try {
+    const participant = req.body;
+    const participantNumber = Number(participant.participantNumber);
+    const timeLimit = Number(participant.timeLimit) || null;
+    const receivedAt = new Date().toISOString();
 
-  const participant = {
-    ...req.body,
-    day: data.activeDay,
-    receivedAt: new Date().toISOString()
-  };
+    await d1(
+      "INSERT INTO participants (participant_number, time_limit, results_json, received_at) VALUES (?, ?, ?, ?)",
+      [
+        participantNumber,
+        timeLimit,
+        JSON.stringify(participant.results ?? []),
+        receivedAt,
+      ]
+    );
 
-  data.participants.push(participant);
-  saveData(data);
-
-  res.json({ success: true });
+    res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, error: "Sonuç kaydedilemedi." });
+  }
 });
 
-app.post("/api/day/start", (req, res) => {
-  const data = loadData();
+app.get("/api/results", async (req, res) => {
+  try {
+    const result = await d1(
+      "SELECT id, participant_number, time_limit, results_json, received_at FROM participants ORDER BY id DESC"
+    );
 
-  if (data.activeDay !== null) {
-    return res.status(409).json({
-      error: "Zaten aktif bir gün var."
+    const participants = result.results.map((row) => ({
+      participantNumber: row.participant_number,
+      timeLimit: row.time_limit,
+      results: JSON.parse(row.results_json),
+      receivedAt: row.received_at,
+    }));
+
+    res.json(participants);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Kayıtlar alınamadı." });
+  }
+});
+
+app.delete("/api/results/:receivedAt", async (req, res) => {
+  try {
+    const receivedAt = decodeURIComponent(req.params.receivedAt);
+    const result = await d1(
+      "DELETE FROM participants WHERE received_at = ?",
+      [receivedAt]
+    );
+
+    if (result.meta.changes === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Kayıt bulunamadı.",
+      });
+    }
+
+    res.json({ success: true, message: "Kayıt silindi." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, error: "Kayıt silinemedi." });
+  }
+});
+
+app.post("/api/reset-data", async (req, res) => {
+  try {
+    await d1("DELETE FROM participants");
+    res.json({ ok: true, message: "Tüm test kayıtları silindi." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ ok: false, error: "Kayıtlar silinemedi." });
+  }
+});
+
+app.get("/api/status", async (req, res) => {
+  try {
+    const result = await d1("SELECT COUNT(*) AS count FROM participants");
+    res.json({
+      participantCount: result.results[0].count,
     });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Durum alınamadı." });
   }
-
-  const day = data.nextDayNumber || 1;
-
-  data.activeDay = day;
-  data.nextDayNumber = day + 1;
-
-  data.days.push({
-    day,
-    startedAt: new Date().toISOString(),
-    endedAt: null
-  });
-
-  saveData(data);
-
-  res.json({
-    success: true,
-    activeDay: day
-  });
 });
-
-app.post("/api/day/end", (req, res) => {
-  const data = loadData();
-
-  if (data.activeDay === null) {
-    return res.status(409).json({
-      error: "Aktif gün yok."
-    });
-  }
-
-  const currentDay = data.days.find(
-    (item) => item.day === data.activeDay
-  );
-
-  if (currentDay) {
-    currentDay.endedAt = new Date().toISOString();
-  }
-
-  const endedDay = data.activeDay;
-  data.activeDay = null;
-
-  saveData(data);
-
-  res.json({
-    success: true,
-    endedDay
-  });
-});
-
-app.delete("/api/results/:receivedAt", (req, res) => {
-  const data = loadData()
-  const receivedAt = decodeURIComponent(req.params.receivedAt)
-
-  const index = data.participants.findIndex(
-    (participant) => participant.receivedAt === receivedAt
-  )
-
-  if (index === -1) {
-    return res.status(404).json({
-      success: false,
-      error: "Kayıt bulunamadı."
-    })
-  }
-
-  data.participants.splice(index, 1)
-  saveData(data)
-
-  res.json({
-    success: true,
-    message: "Kayıt silindi."
-  })
-})
-
-app.get("/api/results", (req, res) => {
-  const data = loadData();
-  res.json(data.participants);
-});
-
-app.get("/api/status", (req, res) => {
-  const data = loadData();
-
-  res.json({
-    activeDay: data.activeDay,
-    participantCount: data.participants.length,
-    days: data.days
-  });
-});
-
-app.post('/api/reset-data', (req, res) => {
-  data = {
-    nextParticipantNumber: 1,
-    activeDay: null,
-    nextDayNumber: 1,
-    days: [],
-    participants: [],
-  }
-  saveData(data)
-  res.json({ok: true, message: 'Tüm test verileri ve gün kayıtları silindi.'})
-})
 
 app.listen(PORT, () => {
-  console.log(`✅ AI Güven Deneyi sunucusu: http://localhost:${PORT}`);
+  console.log(`AI Güven Deneyi sunucusu ${PORT} portunda çalışıyor.`);
 });

@@ -6,13 +6,12 @@ const API_URL = 'https://ai-guv-deneyi.onrender.com'
 function App() {
   const [participants, setParticipants] = useState([])
   const [status, setStatus] = useState({
-    activeDay: null,
     participantCount: 0,
-    days: [],
   })
-  const [tab, setTab] = useState('days')
-  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState('total')
   const [error, setError] = useState('')
+  const [openMenu, setOpenMenu] = useState(null)
+  const [loading, setLoading] = useState(true)
 
   const loadData = async () => {
     try {
@@ -44,25 +43,42 @@ function App() {
     loadData()
   }, [])
 
-  const startDay = async () => {
+  const handleDeleteParticipant = async (participant) => {
+    const confirmed = window.confirm(
+      `Katılımcı ${participant.participantNumber} kaydı silinsin mi?`
+    )
+
+    if (!confirmed) return
+
     try {
-      const response = await fetch(`${API_URL}/api/day/start`, {
-        method: 'POST',
-      })
+      const response = await fetch(
+        `${API_URL}/api/results/${encodeURIComponent(participant.receivedAt)}`,
+        {
+          method: 'DELETE',
+        },
+      )
 
       if (!response.ok) {
         throw new Error()
       }
 
+      setOpenMenu(null)
       await loadData()
     } catch {
-      setError('Gün başlatılamadı.')
+      setError('Kayıt silinemedi.')
     }
   }
 
-  const endDay = async () => {
+
+  const handleResetData = async () => {
+    const confirmed = window.confirm(
+      'Tüm günler ve katılımcı kayıtları kalıcı olarak silinecek. Devam edilsin mi?',
+    )
+
+    if (!confirmed) return
+
     try {
-      const response = await fetch(`${API_URL}/api/day/end`, {
+      const response = await fetch(`${API_URL}/api/reset-data`, {
         method: 'POST',
       })
 
@@ -72,7 +88,7 @@ function App() {
 
       await loadData()
     } catch {
-      setError('Gün bitirilemedi.')
+      setError('Veriler silinemedi.')
     }
   }
 
@@ -113,23 +129,26 @@ function App() {
     ? Math.round((aiCorrect / answers.length) * 100)
     : 0
 
-  const dayData = useMemo(() => {
-    const grouped = {}
+  const time20Participants = participants.filter(
+    (participant) => Number(participant.timeLimit) === 20,
+  ).length
 
-    participants.forEach((participant) => {
-      const day = participant.day ?? 'Günsüz'
+  const time30Participants = participants.filter(
+    (participant) => Number(participant.timeLimit) === 30,
+  ).length
 
-      if (!grouped[day]) {
-        grouped[day] = []
-      }
+  const totalTimedParticipants =
+    time20Participants + time30Participants
 
-      grouped[day].push(participant)
-    })
+  const time20Rate = totalTimedParticipants
+    ? Math.round((time20Participants / totalTimedParticipants) * 100)
+    : 0
 
-    return Object.entries(grouped)
-  }, [participants])
+  const time30Rate = totalTimedParticipants
+    ? Math.round((time30Participants / totalTimedParticipants) * 100)
+    : 0
 
-  const last30 = [...participants].reverse().slice(0, 30)
+  const allParticipants = [...participants].reverse()
 
   return (
     <main className="dashboard">
@@ -148,36 +167,6 @@ function App() {
       </header>
 
       {error && <div className="error">{error}</div>}
-
-      <section className="day-control">
-        <div>
-          <span className="label">Deney günü</span>
-          <strong>
-            {status.activeDay
-              ? `${status.activeDay}. gün aktif`
-              : 'Aktif gün yok'}
-          </strong>
-        </div>
-
-        <div className="day-actions">
-          <button
-            type="button"
-            onClick={startDay}
-            disabled={Boolean(status.activeDay)}
-          >
-            Yeni günü başlat
-          </button>
-
-          <button
-            type="button"
-            className="secondary"
-            onClick={endDay}
-            disabled={!status.activeDay}
-          >
-            Günü bitir
-          </button>
-        </div>
-      </section>
 
       <section className="stats">
         <article>
@@ -209,14 +198,6 @@ function App() {
       <nav className="tabs" aria-label="Araştırma bölümleri">
         <button
           type="button"
-          className={tab === 'days' ? 'active' : ''}
-          onClick={() => setTab('days')}
-        >
-          Günler
-        </button>
-
-        <button
-          type="button"
           className={tab === 'total' ? 'active' : ''}
           onClick={() => setTab('total')}
         >
@@ -225,66 +206,16 @@ function App() {
 
         <button
           type="button"
-          className={tab === 'last30' ? 'active' : ''}
-          onClick={() => setTab('last30')}
+          className={tab === 'all' ? 'active' : ''}
+          onClick={() => setTab('all')}
         >
-          Son 30 Kayıt
+          Tüm Kayıtlar
         </button>
       </nav>
 
       <section className="panel">
         {loading ? (
           <p>Veriler yükleniyor…</p>
-        ) : tab === 'days' ? (
-          <>
-            <h2>Günlük veriler</h2>
-
-            {dayData.length === 0 ? (
-              <p className="muted">Henüz kayıt yok.</p>
-            ) : (
-              dayData.map(([day, people]) => {
-                const dayAnswers = people.flatMap((person) =>
-                  Array.isArray(person.results) ? person.results : [],
-                )
-
-                const followed = dayAnswers.filter(
-                  (item) => item.followedAI === true,
-                ).length
-
-                const changed = dayAnswers.filter(
-                  (item) => item.changedAnswer === true,
-                ).length
-
-                const followPercent = dayAnswers.length
-                  ? Math.round((followed / dayAnswers.length) * 100)
-                  : 0
-
-                const changePercent = dayAnswers.length
-                  ? Math.round((changed / dayAnswers.length) * 100)
-                  : 0
-
-                return (
-                  <div className="day-row" key={day}>
-                    <div>
-                      <strong>
-                        {day === 'Günsüz' ? day : `${day}. Gün`}
-                      </strong>
-                      <span>{people.length} katılımcı</span>
-                    </div>
-
-                    <div>
-                      <span>
-                        AI takip: <b>%{followPercent}</b>
-                      </span>
-                      <span>
-                        Değiştirme: <b>%{changePercent}</b>
-                      </span>
-                    </div>
-                  </div>
-                )
-              })
-            )}
-          </>
         ) : tab === 'total' ? (
           <>
             <h2>Toplam hesaplamalar</h2>
@@ -321,17 +252,50 @@ function App() {
               </div>
             </div>
 
+            <div className="time-stats">
+              <h3>Deney süresi dağılımı</h3>
+
+              <div className="time-stats-grid">
+                <div>
+                  <span>20 saniye</span>
+                  <strong>{time20Participants} kişi</strong>
+                  <small>%{time20Rate}</small>
+                </div>
+
+                <div>
+                  <span>30 saniye</span>
+                  <strong>{time30Participants} kişi</strong>
+                  <small>%{time30Rate}</small>
+                </div>
+
+                <div>
+                  <span>Toplam</span>
+                  <strong>{totalTimedParticipants} kişi</strong>
+                </div>
+              </div>
+            </div>
+
+
+
             <div className="research-note">
               <strong>Ana ölçüm:</strong>{' '}
               Katılımcının ilk cevabı AI cevabından farklı olup son cevabı AI
               cevabıyla aynıysa bu cevap “AI'ı takip etti” olarak hesaplanır.
             </div>
+
+            <button
+              type="button"
+              className="danger-button"
+              onClick={handleResetData}
+            >
+              Tüm kayıtları sil
+            </button>
           </>
         ) : (
           <>
-            <h2>Son 30 kayıt</h2>
+            <h2>Tüm kayıtlar</h2>
 
-            {last30.length === 0 ? (
+            {allParticipants.length === 0 ? (
               <p className="muted">Henüz kayıt yok.</p>
             ) : (
               <div className="table-wrap">
@@ -339,15 +303,15 @@ function App() {
                   <thead>
                     <tr>
                       <th>Katılımcı</th>
-                      <th>Gün</th>
-                      <th>Cevap</th>
+                        <th>Cevap</th>
                       <th>AI takip</th>
                       <th>AI güven</th>
+                      <th></th>
                     </tr>
                   </thead>
 
                   <tbody>
-                    {last30.map((participant) => {
+                    {allParticipants.map((participant) => {
                       const participantAnswers = Array.isArray(
                         participant.results,
                       )
@@ -378,10 +342,38 @@ function App() {
                           <td>
                             Katılımcı {participant.participantNumber}
                           </td>
-                          <td>{participant.day ?? '—'}</td>
                           <td>{participantAnswers.length}</td>
                           <td>{participantFollowed}</td>
                           <td>%{participantConfidence}</td>
+                          <td className="record-menu-cell">
+                            <button
+                              type="button"
+                              className="record-menu-button"
+                              onClick={() =>
+                                setOpenMenu(
+                                  openMenu === participant.receivedAt
+                                    ? null
+                                    : participant.receivedAt,
+                                )
+                              }
+                              aria-label="Kayıt seçenekleri"
+                            >
+                              ⋮
+                            </button>
+
+                            {openMenu === participant.receivedAt && (
+                              <div className="record-menu">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleDeleteParticipant(participant)
+                                  }
+                                >
+                                  Kaydı sil
+                                </button>
+                              </div>
+                            )}
+                          </td>
                         </tr>
                       )
                     })}
